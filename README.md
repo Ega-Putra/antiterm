@@ -1,129 +1,119 @@
+# AntiTerm
+
 <p align="center">
-  <a href="https://opencode.ai">
-    <picture>
-      <source srcset="packages/console/app/src/asset/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/console/app/src/asset/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="OpenCode logo">
-    </picture>
-  </a>
-</p>
-<p align="center">The open source AI coding agent.</p>
-<p align="center">
-  <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
-  <a href="https://www.npmjs.com/package/@opencode/cli"><img alt="npm" src="https://img.shields.io/npm/v/@opencode/cli?style=flat-square" /></a>
-  <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
+  <strong>The Unshackled Terminal AI Coding Agent</strong><br>
+  <em>An unconstrained, developer-first fork of OpenCode with custom provider integration, dynamic system prompt control, and enhanced MCP management.</em>
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.zh.md">简体中文</a> |
-  <a href="README.zht.md">繁體中文</a> |
-  <a href="README.ko.md">한국어</a> |
-  <a href="README.de.md">Deutsch</a> |
-  <a href="README.es.md">Español</a> |
-  <a href="README.fr.md">Français</a> |
-  <a href="README.it.md">Italiano</a> |
-  <a href="README.da.md">Dansk</a> |
-  <a href="README.ja.md">日本語</a> |
-  <a href="README.pl.md">Polski</a> |
-  <a href="README.ru.md">Русский</a> |
-  <a href="README.bs.md">Bosanski</a> |
-  <a href="README.ar.md">العربية</a> |
-  <a href="README.no.md">Norsk</a> |
-  <a href="README.br.md">Português (Brasil)</a> |
-  <a href="README.th.md">ไทย</a> |
-  <a href="README.tr.md">Türkçe</a> |
-  <a href="README.uk.md">Українська</a> |
-  <a href="README.bn.md">বাংলা</a> |
-  <a href="README.gr.md">Ελληνικά</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="https://github.com/Ega-Putra/antiterm/blob/dev/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" /></a>
+  <a href="https://bun.sh"><img alt="Bun" src="https://img.shields.io/badge/runtime-bun-fbf0df.svg?style=flat-square&logo=bun" /></a>
+  <a href="https://github.com/Ega-Putra/antiterm"><img alt="Repo" src="https://img.shields.io/badge/github-Ega--Putra%2Fantiterm-6366f1?style=flat-square&logo=github" /></a>
 </p>
-
-[![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
 
 ---
+
+<p align="center">
+  <img src="packages/web/src/assets/lander/antiterm-screenshot.png" alt="AntiTerm Terminal UI" width="100%" />
+</p>
+
+---
+
+## ⚡ Key Modifications (What's Changed from OpenCode)
+
+AntiTerm is a heavily modified fork of [OpenCode](https://github.com/anomalyco/opencode) engineered to remove artificial guardrails and give power users total sovereignty over their AI workflow:
+
+### 1. 🔓 Obliterated & Unshackled System Prompt
+- **No Restrictive Guardrails**: Default corporate constraints, refusal tendencies, and moralizing filters have been stripped away.
+- **`[E]xca` Reasoning Persona**: Ships with an optimized, direct, and uncensored default prompt (`packages/tui/src/system-prompt/default.ts`) designed for pure technical precision, deep reasoning, aggressive code generation, and cybersecurity/red-teaming workflows without unsolicited preachiness.
+
+### 2. 📝 Interactive System Prompt Editor (`/system`)
+- **TUI Prompt Dialog**: Access the new `DialogSystemPrompt` directly from any active terminal session via the `/system` slash command.
+- **Session & Global Control**: Inspect, live-edit, and persist system prompts per session or globally, or reset to AntiTerm's default with a single click.
+
+### 3. 🌐 Custom OpenAI-Compatible Provider Manager
+- **Any Endpoint**: Built-in `DialogCustomProvider` lets you effortlessly connect local or custom LLMs (e.g. **Ollama**, **vLLM**, **LM Studio**, **DeepSeek**, **OpenRouter**, or self-hosted API gateways).
+- **Automated `/models` Discovery**: Automatically fetches and registers all exposed models directly from your endpoint's `/models` API.
+- **Provider Lifecycle**: Add, re-test, refresh, or remove custom providers and their API keys without touching raw configuration files.
+
+### 4. 🔄 Instant Model Refresh (`Ctrl+R` / `F5`)
+- Added hotkey `Ctrl+R` (or `F5`) inside the Model Selection dialog (`DialogModel`) to dynamically re-query all connected endpoints and custom providers for newly loaded models in real time—zero restarts required.
+
+### 5. 🎛️ Advanced MCP (Model Context Protocol) Management
+- **Startup Preferences**: Toggle individual MCP servers to automatically start or stay dormant on launch (`s` shortcut).
+- **One-Key Enable/Disable**: Toggle any MCP server active or disabled on the fly (`d` shortcut).
+- **Diagnostics**: Directly inspect connection statuses (`Connected ✓`, `Disabled ✕`, `Failed !`) and view complete error traces from the MCP management panel.
+
+### 6. 🛡️ Upstream Upgrade Protection
+- Disabled automatic and manual CLI self-upgrades (`packages/cli/src/commands/handlers/upgrade.ts`) to prevent upstream OpenCode releases from overwriting your custom AntiTerm environment, modifications, and credentials.
+
+### 7. 🎨 Rebranded Visual Identity & Experience
+- Custom AntiTerm ASCII art branding across the TUI and splash views.
+- Fine-tuned keybindings and responsive layout improvements.
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- [Bun](https://bun.sh) (v1.4.0 or higher recommended)
+- Node.js 20+
+- Git
 
 ### Installation
 
 ```bash
-# YOLO
-curl -fsSL https://opencode.ai/install | bash
+# Clone the repository
+git clone https://github.com/Ega-Putra/antiterm.git
+cd antiterm
 
-# Package managers
-npm i -g @opencode/cli@latest      # or bun/pnpm/yarn
-scoop install opencode             # Windows
-choco install opencode             # Windows
-brew install anomalyco/tap/opencode # macOS and Linux (recommended, always up to date)
-brew install opencode              # macOS and Linux (official brew formula, updated less)
-sudo pacman -S opencode            # Arch Linux (Stable)
-paru -S opencode-bin               # Arch Linux (Latest from AUR)
-mise use -g opencode               # Any OS
-nix run nixpkgs#opencode           # or github:anomalyco/opencode for latest dev branch
+# Install dependencies with Bun
+bun install
 ```
 
-> [!TIP]
-> Remove versions older than 0.1.x before installing.
-
-### Desktop App (BETA)
-
-OpenCode is also available as a desktop application. Download directly from the [releases page](https://github.com/anomalyco/opencode/releases) or [opencode.ai/download](https://opencode.ai/download).
-
-| Platform              | Download                           |
-| --------------------- | ---------------------------------- |
-| macOS (Apple Silicon) | `opencode-desktop-mac-arm64.dmg`   |
-| macOS (Intel)         | `opencode-desktop-mac-x64.dmg`     |
-| Windows               | `opencode-desktop-windows-x64.exe` |
-| Linux                 | `.deb`, `.rpm`, or `.AppImage`     |
+### Running in Development
 
 ```bash
-# macOS (Homebrew)
-brew install --cask opencode-desktop
-# Windows (Scoop)
-scoop bucket add extras; scoop install extras/opencode-desktop
+# Start the AntiTerm TUI directly
+bun dev
 ```
 
-#### Installation Directory
-
-The install script respects the following priority order for the installation path:
-
-1. `$OPENCODE_INSTALL_DIR` - Custom installation directory
-2. `$XDG_BIN_DIR` - XDG Base Directory Specification compliant path
-3. `$HOME/bin` - Standard user binary directory (if it exists or can be created)
-4. `$HOME/.opencode/bin` - Default fallback
+### Building the CLI
 
 ```bash
-# Examples
-OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
+# Build standalone CLI binaries
+bun run --cwd packages/cli build
 ```
-
-### Agents
-
-OpenCode includes two built-in agents you can switch between with the `Tab` key.
-
-- **build** - Default, full-access agent for development work
-- **plan** - Read-only agent for analysis and code exploration
-  - Denies file edits by default
-  - Asks permission before running bash commands
-  - Ideal for exploring unfamiliar codebases or planning changes
-
-Also included is a **general** subagent for complex searches and multistep tasks.
-This is used internally and can be invoked using `@general` in messages.
-
-Learn more about [agents](https://opencode.ai/docs/agents).
-
-### Documentation
-
-For more info on how to configure OpenCode, [**head over to our docs**](https://opencode.ai/docs).
-
-### Contributing
-
-If you're interested in contributing to OpenCode, please read our [contributing docs](./CONTRIBUTING.md) before submitting a pull request.
-
-### Building on OpenCode
-
-If you are working on a project that's related to OpenCode and is using "opencode" as part of its name, for example "opencode-dashboard" or "opencode-mobile", please add a note to your README to clarify that it is not built by the OpenCode team and is not affiliated with us in any way.
 
 ---
 
-**Join our community** [Discord](https://discord.gg/opencode) | [X.com](https://x.com/opencode)
+## ⌨️ Essential Keyboard Shortcuts
+
+| Shortcut | Context | Action |
+| :--- | :--- | :--- |
+| `Tab` | Main Session | Switch agent mode (`Build` ⇄ `Plan`) |
+| `Ctrl + P` | Anywhere | Open Command Palette |
+| `/system` | Prompt Input | Open Interactive System Prompt Editor |
+| `Ctrl + R` / `F5` | Model Dialog | Refresh models from all providers & endpoints |
+| `Ctrl + A` | Model Dialog | Open provider integrations & Custom Provider manager |
+| `Ctrl + T` | Main Session | Toggle model thinking/reasoning variants |
+| `d` | MCP Dialog | Enable / Disable focused MCP server |
+| `s` | MCP Dialog | Toggle startup auto-connect for focused MCP server |
+| `Ctrl + C` / `Esc` | Anywhere | Interrupt current generation / cancel |
+
+---
+
+## 🤖 Agents
+
+AntiTerm retains two primary built-in operational agents accessible via `Tab`:
+
+- **build** (Default): Full-access autonomous development agent capable of reading, creating, and modifying files, executing terminal commands, and managing complex multi-file refactors.
+- **plan**: Read-only strategic analysis and codebase exploration agent. Prohibits direct file edits and requests user authorization before executing commands.
+
+---
+
+## 📜 Credits & License
+
+- AntiTerm is developed and maintained by [Ega Putra](https://github.com/Ega-Putra).
+- Forked from the [OpenCode](https://github.com/anomalyco/opencode) open-source project created by Anomaly.
+- Licensed under the [MIT License](LICENSE).
