@@ -73,6 +73,7 @@ import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
+import { DialogSystemPrompt } from "./component/dialog-system-prompt"
 import { DialogOpen, DialogOpenKey, moveOpenSession } from "./component/dialog-open"
 import { SessionTabs } from "./component/session-tabs"
 import { clampSessionTabsWidth, sessionTabsFitVertically, SESSION_SIDEBAR_WIDTH } from "./ui/layout"
@@ -761,6 +762,19 @@ function App() {
           if (agent) local.agent.set(agent.id)
           if (model) local.model.set(model)
           dialog.clear()
+        },
+      },
+      {
+        name: "session.system_prompt",
+        title: "System prompt",
+        category: "Session",
+        slash: { name: "system" },
+        run: () => {
+          const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
+          const currentMetadata = sessionID
+            ? (data.session.get(sessionID)?.metadata as Record<string, unknown> | undefined)
+            : undefined
+          DialogSystemPrompt.show(dialog, sessionID, currentMetadata)
         },
       },
       {

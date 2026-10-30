@@ -15,7 +15,7 @@ import type {
 import { openUrl } from "@opencode/util/open"
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useNewDesigns } from "../config"
+import { useConfig, useNewDesigns } from "../config"
 import { useClipboard } from "../context/clipboard"
 import { useData } from "../context/data"
 import { useClient } from "../context/client"
@@ -45,6 +45,14 @@ import {
   formValidateValue,
   type FormAnswerField,
 } from "../util/form"
+import {
+  DialogCustomProvider,
+  deleteCustomProvider,
+  getCustomProviders,
+  saveCustomProvider,
+  fetchOpenAIModels,
+  type CustomProviderInfo,
+} from "./dialog-custom-provider"
 
 const INTEGRATION_PRIORITY: Record<string, number> = {
   "opencode-go": 0,
@@ -103,8 +111,23 @@ export function DialogIntegration(
   const data = useData()
   const currentLocation = useLocation()
   const dialog = useDialog()
+  const client = useClient()
+  const toast = useToast()
+  const config = useConfig()
+  const shortcuts = Keymap.useShortcuts()
+  const newDesigns = useNewDesigns()
   const theme = useTheme().surface("dialog")
   const location = currentLocation.ref ?? data.location.default()
+  const [deleting, setDeleting] = createSignal<string>()
+  const [customTrigger, setCustomTrigger] = createSignal(0)
+
+  const customProviders = createMemo(() => {
+    void customTrigger()
+    void (config.data as any)?.provider
+    return getCustomProviders()
+  })
+  const customProviderMap = createMemo(() => new Map(customProviders().map((p) => [p.id, p])))
+
   const integrations = createMemo(() =>
     integrationOptions(data.location.integration.list(location) ?? []).filter(
       (integration) => props.integrationID === undefined || integration.id === props.integrationID,
@@ -124,37 +147,149 @@ export function DialogIntegration(
   })
 
   const options = createMemo(() => {
-    return integrations().map((integration) => {
-      const methods = connectMethods(integration)
-      const credentials = credentialConnections(integration)
-      let category = "Services"
-      if (integration.id in INTEGRATION_PRIORITY) category = "Popular"
-      if (integration.metadata?.source === "mcp") category = "MCP"
-      const status = integration.connections[0]?.status
-      return {
-        title: integration.name,
-        value: integration.id,
-        description: methods.length === 0 ? "Environment only" : undefined,
-        footer: status ? "Sign in required →" : connectionSummary(integration) || undefined,
-        footerColor: status ? theme.text.feedback.warning.base : undefined,
-        category,
-        disabled: methods.length === 0 && credentials.length === 0,
-        gutter:
-          integration.connections.length > 0 && !status
-            ? () => <text fg={theme.text.feedback.success.base}>✓</text>
-            : undefined,
-        onSelect: () => {
-          if (credentials.length) return manageConnections(integration, methods, location, dialog, props.onConnected)
-          return selectMethod(integration, methods, location, dialog, props.onConnected)
+    const list = integrations()
+      .filter((integration) => !customProviderMap().has(integration.id))
+      .map((integration) => {
+        const methods = connectMethods(integration)
+        const credentials = credentialConnections(integration)
+        let category = "Services"
+        if (integration.id in INTEGRATION_PRIORITY) category = "Popular"
+        if (integration.metadata?.source === "mcp") category = "MCP"
+        const status = integration.connections[0]?.status
+        const confirming = deleting() === integration.id
+        const isConnected = credentials.length > 0 && !status
+        return {
+          title: confirming
+            ? `Press ${shortcuts.get("dialog.integration.delete")} again to disconnect`
+            : integration.name,
+          value: integration.id,
+          description: methods.length === 0 ? "Environment only" : undefined,
+          footer: status ? "Sign in required →" : connectionSummary(integration) || undefined,
+          footerColor: status ? theme.text.feedback.warning.base : undefined,
+          category,
+          disabled: methods.length === 0 && credentials.length === 0,
+          bg: confirming ? theme.background.action.destructive.focused : undefined,
+          fg: confirming ? theme.text.action.destructive.focused : undefined,
+          gutter: isConnected ? () => <text fg={theme.text.feedback.success.base}>✓</text> : undefined,
+          onSelect: () => {
+            if (credentials.length) return manageConnections(integration, methods, location, dialog, props.onConnected)
+            return selectMethod(integration, methods, location, dialog, props.onConnected)
+          },
+        }
+      })
+
+    if (props.integrationID === undefined) {
+      const customItems = customProviders().map((p) => {
+        const confirming = deleting() === p.id
+        return {
+          title: confirming
+            ? `Press ${shortcuts.get("dialog.integration.delete")} again to delete`
+            : p.name,
+          value: p.id,
+          description: `${p.baseURL || "Custom endpoint"} • ${p.models.length} model${p.models.length === 1 ? "" : "s"}`,
+          footer: "Manage →",
+          footerColor: undefined,
+          category: "Custom Providers",
+          disabled: false,
+          bg: confirming ? theme.background.action.destructive.focused : undefined,
+          fg: confirming ? theme.text.action.destructive.focused : undefined,
+          gutter: () => <text fg={theme.text.feedback.success.base}>✓</text>,
+          onSelect: () => {
+            manageCustomProvider(p, location, dialog, () => setCustomTrigger((n) => n + 1), props.onConnected)
+          },
+        }
+      })
+
+      list.unshift(
+        {
+          title: "+ Custom Provider (OpenAI Compatible)",
+          value: "custom-openai-provider",
+          description: "Connect any endpoint (URL & API Key) with auto-fetched models",
+          footer: "Add →",
+          footerColor: theme.text.action.primary.base,
+          category: "Custom Providers",
+          disabled: false,
+          bg: undefined,
+          fg: undefined,
+          gutter: () => <text fg={theme.text.action.primary.base}>★</text>,
+          onSelect: () => {
+            dialog.replace(() => (
+              <DialogCustomProvider
+                onConnected={props.onConnected}
+                onBack={() => {
+                  dialog.replace(() => <DialogIntegration onConnected={props.onConnected} />)
+                }}
+              />
+            ))
+          },
         },
-      }
-    })
+        ...customItems,
+      )
+    }
+
+    return list
   })
 
   return (
     <DialogSelect
       title="Connect an integration"
       options={options()}
+      onMove={() => setDeleting(undefined)}
+      actions={[
+        {
+          command: "dialog.integration.delete",
+          title: newDesigns() ? "delete / disconnect" : "Delete",
+          disabled: (opt) => {
+            if (!opt || opt.value === "custom-openai-provider") return true
+            const isCustom = customProviderMap().has(opt.value)
+            const builtin = integrations().find((i) => i.id === opt.value)
+            const isConnected = builtin ? credentialConnections(builtin).length > 0 : false
+            return !isCustom && !isConnected
+          },
+          onTrigger: async (opt) => {
+            if (!opt || opt.value === "custom-openai-provider") return
+            if (deleting() !== opt.value) {
+              setDeleting(opt.value)
+              return
+            }
+
+            const targetID = opt.value
+            if (customProviderMap().has(targetID)) {
+              const p = customProviderMap().get(targetID)!
+              deleteCustomProvider(targetID)
+              void config
+                .update((draft) => {
+                  if (draft.provider) delete draft.provider[targetID]
+                })
+                .catch(() => {})
+              data.location.provider.invalidate(location)
+              data.location.model.invalidate(location)
+              data.location.integration.invalidate(location)
+              setDeleting(undefined)
+              setCustomTrigger((n) => n + 1)
+              await Promise.all([
+                data.location.provider.sync(location),
+                data.location.model.sync(location),
+                data.location.integration.sync(location),
+              ])
+              toast.show({ variant: "success", message: `Provider "${p.name}" deleted` })
+              return
+            }
+
+            const builtin = integrations().find((i) => i.id === targetID)
+            if (builtin) {
+              const creds = credentialConnections(builtin)
+              for (const cred of creds) {
+                await client.api.credential.remove({ credentialID: cred.id }).catch(toast.error)
+              }
+              data.location.integration.invalidate(location)
+              await data.location.integration.sync(location)
+              setDeleting(undefined)
+              toast.show({ variant: "success", message: `Disconnected "${builtin.name}"` })
+            }
+          },
+        },
+      ]}
       emptyView={
         <box paddingLeft={DIALOG_LIST_INSET} paddingRight={DIALOG_LIST_INSET}>
           <text fg={theme.text.muted}>No integrations available</text>
@@ -167,6 +302,117 @@ export function DialogIntegration(
       }
     />
   )
+}
+
+function manageCustomProvider(
+  provider: CustomProviderInfo,
+  location: LocationRef,
+  dialog: ReturnType<typeof useDialog>,
+  onUpdate: () => void,
+  onConnected?: OnIntegrationConnected,
+) {
+  dialog.replace(() => {
+    const data = useData()
+    const toast = useToast()
+    const config = useConfig()
+    const theme = useTheme().surface("dialog")
+    const [confirmDelete, setConfirmDelete] = createSignal(false)
+
+    return (
+      <DialogSelect
+        title={`Custom Provider: ${provider.name}`}
+        options={[
+          {
+            title: "🔄 Refresh / re-fetch models",
+            value: "refresh",
+            description: `Re-fetch /models from ${provider.baseURL}`,
+            onSelect: async () => {
+              toast.show({ variant: "info", message: `Fetching models from ${provider.name}...`, duration: 2000 })
+              try {
+                const fetched = await fetchOpenAIModels(provider.baseURL, provider.apiKey)
+                saveCustomProvider({
+                  providerID: provider.id,
+                  name: provider.name,
+                  baseURL: provider.baseURL,
+                  apiKey: provider.apiKey,
+                  models: fetched,
+                })
+                void config
+                  .update((draft) => {
+                    if (draft.provider?.[provider.id]) {
+                      draft.provider[provider.id].models = Object.fromEntries(fetched.map((m) => [m, { name: m }]))
+                    }
+                  })
+                  .catch(() => {})
+                data.location.model.invalidate(location)
+                data.location.provider.invalidate(location)
+                await Promise.all([
+                  data.location.model.sync(location),
+                  data.location.provider.sync(location),
+                ])
+                onUpdate()
+                toast.show({
+                  variant: "success",
+                  message: `Refreshed ${fetched.length} model(s) for "${provider.name}"`,
+                })
+              } catch (e: any) {
+                toast.show({ variant: "error", message: `Failed to refresh: ${e?.message ?? e}` })
+              }
+              dialog.replace(() => <DialogIntegration onConnected={onConnected} />)
+            },
+          },
+          {
+            title: confirmDelete()
+              ? "⚠️ Press Enter again to CONFIRM DELETION"
+              : "🗑️ Delete provider",
+            value: "delete",
+            description: confirmDelete()
+              ? `Permanently remove "${provider.name}" configuration and models`
+              : `Delete provider "${provider.name}" from configuration`,
+            bg: confirmDelete() ? theme.background.action.destructive.focused : undefined,
+            fg: confirmDelete() ? theme.text.action.destructive.focused : undefined,
+            onSelect: async () => {
+              if (!confirmDelete()) {
+                setConfirmDelete(true)
+                return
+              }
+              deleteCustomProvider(provider.id)
+              void config
+                .update((draft) => {
+                  if (draft.provider) delete draft.provider[provider.id]
+                })
+                .catch(() => {})
+              data.location.provider.invalidate(location)
+              data.location.model.invalidate(location)
+              data.location.integration.invalidate(location)
+              onUpdate()
+              await Promise.all([
+                data.location.provider.sync(location),
+                data.location.model.sync(location),
+                data.location.integration.sync(location),
+              ])
+              toast.show({ variant: "success", message: `Provider "${provider.name}" deleted` })
+              dialog.replace(() => <DialogIntegration onConnected={onConnected} />)
+            },
+          },
+          {
+            title: "← Back to integrations",
+            value: "back",
+            onSelect: () => {
+              dialog.replace(() => <DialogIntegration onConnected={onConnected} />)
+            },
+          },
+        ]}
+        footerHints={[
+          { title: "select", label: "enter", group: "primary" },
+          { title: "back", label: "esc", group: "secondary" },
+        ]}
+        onCancel={() => {
+          dialog.replace(() => <DialogIntegration onConnected={onConnected} />)
+        }}
+      />
+    )
+  })
 }
 
 function manageConnections(

@@ -710,6 +710,8 @@ export type McpServer = {
   name: string
   status: McpStatusConnected | McpStatusPending | McpStatusDisabled | McpStatusFailed | McpStatusNeedsAuth
   integrationID?: IntegrationID
+  startup?: boolean
+  disabled?: boolean
 }
 
 export type McpResourceCatalog = { resources: Array<McpResource>; templates: Array<McpResourceTemplate> }

@@ -692,14 +692,17 @@ const previousCompaction = (messages: ReadonlyArray<SessionMessage.Info>) => {
   return first?.type === "compaction" && first.status === "completed" ? first : undefined
 }
 
-const transcript = (context: SessionContext.Loaded, messages: ReadonlyArray<SessionMessage.Info>) =>
-  SessionModelRequest.baseTranscript({
+const transcript = (context: SessionContext.Loaded, messages: ReadonlyArray<SessionMessage.Info>) => {
+  const customSystem = (context.session.metadata as Record<string, unknown> | undefined)?.systemPrompt
+  return SessionModelRequest.baseTranscript({
     agent: context.agent.info,
     model: context.model,
     tools: context.tools,
     initial: context.initial,
     messages,
+    customSystem: typeof customSystem === "string" ? customSystem : undefined,
   })
+}
 
 /**
  * `older` gets summarized; `recent`, the newest messages within `keep` tokens, is kept verbatim as text beside

@@ -43,12 +43,14 @@ export const generate = Effect.fn("SessionGenerate.generate")(function* (input: 
       selection.instructions,
       SessionProviderContext.provenance(model) ?? "local",
     )
+    const customSystem = (selection.session.metadata as Record<string, unknown> | undefined)?.systemPrompt
     const transcript = SessionModelRequest.baseTranscript({
       agent: selection.agent.info,
       model,
       tools: selection.tools,
       initial: history.initial,
       messages: history.messages,
+      customSystem: typeof customSystem === "string" ? customSystem : undefined,
     })
     const prepared = yield* context.request.generate({
       session: selection.session,

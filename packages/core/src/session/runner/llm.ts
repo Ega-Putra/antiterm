@@ -224,12 +224,14 @@ const layer = Layer.effect(
           continue
         }
         const stepLimitReached = loaded.agent.info.steps !== undefined && step >= loaded.agent.info.steps
+        const customSystem = (loaded.session.metadata as Record<string, unknown> | undefined)?.systemPrompt
         const transcript = SessionModelRequest.baseTranscript({
           agent: loaded.agent.info,
           model: loaded.model,
           tools: loaded.tools,
           initial: loaded.initial,
           messages: loaded.messages,
+          customSystem: typeof customSystem === "string" ? customSystem : undefined,
         })
         const prepared = yield* context.request.primary({
           session: loaded.session,

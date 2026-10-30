@@ -18,6 +18,7 @@ import { Location } from "../location.js"
 import { waitForAbort } from "@opencode/util/process"
 import { State } from "../state.js"
 import type { McpClient } from "./client.js"
+import { isMcpStartupEnabled, isMcpDisabled, setMcpDisabled } from "./preference.js"
 
 export const ServerName = Schema.String.pipe(Schema.brand("MCP.ServerName"))
 export type ServerName = typeof ServerName.Type
@@ -510,7 +511,7 @@ export const layer = (options?: Options) =>
         entries.set(name, entry)
         yield* Effect.gen(function* () {
           yield* register(name, entry)
-          if (serverConfig.disabled) {
+          if (serverConfig.disabled || isMcpDisabled(name, serverConfig)) {
             entry.status = { status: "disabled" }
             yield* bus.publish(McpEvent.StatusChanged, { server: name })
             return
@@ -549,7 +550,14 @@ export const layer = (options?: Options) =>
 
           // Initial connections stay asynchronous so one slow server does not block Location startup.
           for (const [name, entry] of entries) {
-            if (entry.config.disabled) {
+            if (entry.config.disabled || isMcpDisabled(name, entry.config)) {
+              entry.status = { status: "disabled" }
+              entry.startup.openUnsafe()
+              yield* bus.publish(McpEvent.StatusChanged, { server: name })
+              continue
+            }
+            if (!isMcpStartupEnabled(name, entry.config)) {
+              // AntiTerm: Do not connect automatically on startup unless explicitly enabled
               entry.status = { status: "disabled" }
               entry.startup.openUnsafe()
               yield* bus.publish(McpEvent.StatusChanged, { server: name })
@@ -630,7 +638,13 @@ export const layer = (options?: Options) =>
         servers: Effect.fn("MCP.servers")(function* () {
           return Array.from(entries)
             .toSorted(([a], [b]) => a.localeCompare(b))
-            .map(([name, entry]): ServerInfo => ({ name, status: entry.status, integrationID: entry.integrationID }))
+            .map(([name, entry]): ServerInfo => ({
+              name,
+              status: entry.status,
+              integrationID: entry.integrationID,
+              startup: isMcpStartupEnabled(name, entry.config),
+              disabled: isMcpDisabled(name, entry.config) || entry.config.disabled === true,
+            }))
         }),
         add: Effect.fn("MCP.add")(function* (server, config) {
           const name = ServerName.make(server)
@@ -641,6 +655,7 @@ export const layer = (options?: Options) =>
           const name = ServerName.make(server)
           yield* Effect.gen(function* () {
             const target = yield* requireServer(name)
+            setMcpDisabled(name, false)
             yield* stopServer(name, target.entry)
             yield* startServer(name, target.entry)
           }).pipe(locks.withLock(name))

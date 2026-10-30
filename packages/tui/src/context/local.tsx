@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store"
 import { dedupeWith } from "effect/Array"
 import { createSimpleContext } from "./helper"
-import { batch, createMemo, onCleanup } from "solid-js"
+import { batch, createMemo, createSignal, onCleanup } from "solid-js"
 import { useEvent } from "./event"
 import path from "path"
 import { useTuiPaths } from "./runtime"
@@ -26,6 +26,7 @@ import { useData } from "./data"
 import { usePermission } from "./permission"
 import { useLocation } from "./location"
 import { parse } from "../util/model"
+import { DEFAULT_SYSTEM_PROMPT } from "../system-prompt/default"
 
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
@@ -604,11 +605,45 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const session = createSession()
 
+    function createSystemPrompt() {
+      const filePath = path.join(paths.state, "system-prompt.json")
+      const fallback = DEFAULT_SYSTEM_PROMPT.trim() ? DEFAULT_SYSTEM_PROMPT : undefined
+      const [prompt, setPrompt] = createSignal<string | undefined>(fallback)
+
+      readJson<{ prompt?: string }>(filePath)
+        .then((x) => {
+          if (x && typeof x.prompt === "string") {
+            setPrompt(x.prompt.trim() ? x.prompt : undefined)
+          } else if (fallback) {
+            setPrompt(fallback)
+          }
+        })
+        .catch(() => {
+          if (fallback) setPrompt(fallback)
+        })
+
+      return {
+        get: () => prompt(),
+        set: (value: string | undefined) => {
+          setPrompt(value)
+          void writeJsonAtomic(filePath, { prompt: value ?? "" })
+        },
+        reset: () => {
+          setPrompt(fallback)
+          void writeJsonAtomic(filePath, { prompt: fallback ?? "" })
+        },
+        default: () => fallback,
+      }
+    }
+
+    const systemPrompt = createSystemPrompt()
+
     const result = {
       model,
       agent,
       session,
       permission,
+      systemPrompt,
     }
     return result
   },

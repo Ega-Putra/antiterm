@@ -175,8 +175,9 @@ function argumentSlash(input: string, commands: readonly KeymapCommand[]) {
   if (!head) return
   const command = commands.find(
     (command) =>
-      command.slash?.arguments &&
-      (command.slash.name === head.name || command.slash.aliases?.includes(head.name) === true),
+      command.slash &&
+      (command.slash.name === head.name || command.slash.aliases?.includes(head.name) === true) &&
+      (head.arguments ? command.slash.arguments : true),
   )
   if (!command) return
   return { command, input: head.arguments }
@@ -1247,6 +1248,10 @@ export function Prompt(props: PromptProps) {
         gate: created.request.then(async (info) => {
           if (terminalEnvironment.variables !== undefined) {
             await client.api.session.environment({ sessionID: created.id, variables: terminalEnvironment.variables })
+          }
+          const customPrompt = local.systemPrompt.get()
+          if (customPrompt) {
+            await client.api.session.update({ sessionID: created.id, metadata: { systemPrompt: customPrompt } })
           }
         }),
         recover: (error) => {

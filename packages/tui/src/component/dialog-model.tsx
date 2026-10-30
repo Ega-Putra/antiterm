@@ -1,7 +1,7 @@
 import { createMemo, createSignal } from "solid-js"
 import { useLocal } from "../context/local"
 import { DialogSelect } from "../ui/dialog-select"
-import { useDialog } from "../ui/dialog"
+import { DIALOG_LIST_INSET, useDialog } from "../ui/dialog"
 import { DialogIntegration } from "./dialog-integration"
 import { DialogVariant } from "./dialog-variant"
 import * as fuzzysort from "fuzzysort"
@@ -10,6 +10,9 @@ import { useData } from "../context/data"
 import { modelPreferenceKey } from "../model-preference"
 import { useLocation } from "../context/location"
 import { useNewDesigns } from "../config"
+import { useToast } from "../ui/toast"
+import { useTheme } from "../context/theme"
+import { refreshAllCustomProviderModels } from "./dialog-custom-provider"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
@@ -17,7 +20,10 @@ export function DialogModel(props: { providerID?: string }) {
   const data = useData()
   const dialog = useDialog()
   const location = useLocation()
+  const toast = useToast()
+  const theme = useTheme().surface("dialog")
   const [query, setQuery] = createSignal("")
+  const [refreshing, setRefreshing] = createSignal(false)
   const favoritePriority = new Set(local.model.favorite().map(modelPreferenceKey))
 
   const connected = useConnected()
@@ -140,12 +146,65 @@ export function DialogModel(props: { providerID?: string }) {
     dialog.clear()
   }
 
+  async function handleRefresh() {
+    if (refreshing()) return
+    setRefreshing(true)
+    toast.show({ variant: "info", message: "Refreshing models...", duration: 2000 })
+    try {
+      const res = await refreshAllCustomProviderModels()
+      data.location.model.invalidate(location.ref)
+      data.location.provider.invalidate(location.ref)
+      data.location.integration.invalidate(location.ref)
+      await Promise.all([
+        data.location.model.sync(location.ref),
+        data.location.provider.sync(location.ref),
+        data.location.integration.sync(location.ref),
+      ])
+      if (res.errors.length > 0) {
+        toast.show({
+          variant: "warning",
+          message: `Models refreshed (${res.updated}/${res.total} custom providers). Issues: ${res.errors.join("; ")}`,
+          duration: 4000,
+        })
+      } else {
+        const count = models().length
+        toast.show({
+          variant: "success",
+          message:
+            res.total > 0
+              ? `Refreshed ${count} model(s) from ${res.total} custom provider(s)`
+              : `Refreshed ${count} model(s)`,
+          duration: 3000,
+        })
+      }
+    } catch (e: any) {
+      toast.show({ variant: "error", message: `Failed to refresh models: ${e?.message ?? e}` })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   return (
     <DialogSelect<ReturnType<typeof options>[number]["value"]>
       searchInTitle
       titlePlaceholder="Search models"
       options={options()}
       actions={[
+        {
+          command: "model.dialog.refresh",
+          title: newDesigns()
+            ? refreshing()
+              ? "refreshing..."
+              : "refresh"
+            : refreshing()
+              ? "Refreshing..."
+              : "Refresh",
+          selection: "none",
+          disabled: refreshing(),
+          onTrigger() {
+            void handleRefresh()
+          },
+        },
         {
           command: "model.dialog.provider",
           title: newDesigns()
@@ -173,6 +232,11 @@ export function DialogModel(props: { providerID?: string }) {
           },
         },
       ]}
+      emptyView={
+        <box paddingLeft={DIALOG_LIST_INSET} paddingRight={DIALOG_LIST_INSET}>
+          <text fg={theme.text.muted}>No models found. Press ctrl+r to refresh.</text>
+        </box>
+      }
       onFilter={setQuery}
       flat={true}
       skipFilter={true}

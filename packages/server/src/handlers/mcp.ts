@@ -20,7 +20,13 @@ export const McpHandler = HttpApiBuilder.group(Api, "server.mcp", (handlers) =>
               .servers()
               .pipe(
                 Effect.map((servers) =>
-                  servers.map((info) => ({ name: info.name, status: info.status, integrationID: info.integrationID })),
+                  servers.map((info) => ({
+                    name: info.name,
+                    status: info.status,
+                    integrationID: info.integrationID,
+                    startup: info.startup,
+                    disabled: info.disabled,
+                  })),
                 ),
               ),
           )

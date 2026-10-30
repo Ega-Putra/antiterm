@@ -195,12 +195,12 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   ])
 
   const filtered = createMemo(() => {
-    if (props.search) return props.search(store.filter).filter((x) => x.disabled !== true)
-    if (props.skipFilter || props.renderFilter === false) return props.options.filter((x) => x.disabled !== true)
+    if (props.search) return (props.search(store.filter) ?? []).filter((x) => x && x.disabled !== true)
+    if (props.skipFilter || props.renderFilter === false) return (props.options ?? []).filter((x) => x && x.disabled !== true)
     const needle = store.filter.toLowerCase()
     const options = pipe(
-      props.options,
-      filter((x) => x.disabled !== true),
+      props.options ?? [],
+      filter((x) => x && x.disabled !== true),
     )
     if (!needle) return options
 
@@ -214,36 +214,37 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       })
       .map((x) => x.obj)
 
-    return result
-  })
+    return result ?? []
+  }, [])
 
   const flatten = createMemo(() => props.search !== undefined || (props.flat && store.filter.length > 0))
 
   const grouped = createMemo<[string, DialogSelectOption<T>[]][]>(() => {
-    if (flatten()) return filtered().length ? [["", filtered()]] : []
+    const list = filtered() ?? []
+    if (flatten()) return list.length ? [["", list]] : []
     const result = pipe(
-      filtered(),
-      groupBy((x) => x.category ?? ""),
-      // mapValues((x) => x.sort((a, b) => a.title.localeCompare(b.title))),
+      list,
+      groupBy((x) => x?.category ?? ""),
       entries(),
     )
-    return result
-  })
+    return result ?? []
+  }, [])
 
   const flat = createMemo(() => {
     return pipe(
-      grouped(),
-      flatMap(([_, options]) => options),
+      grouped() ?? [],
+      flatMap(([_, options]) => options ?? []),
     )
-  })
+  }, [])
 
   const rows = createMemo(() => {
-    const headers = grouped().reduce((acc, [category], i) => {
+    const list = grouped() ?? []
+    const headers = list.reduce((acc, [category], i) => {
       if (!category) return acc
       return acc + (i > 0 ? 2 : 1)
     }, 0)
-    return flat().reduce((acc, option) => acc + 1 + (option.details?.length ?? 0), headers)
-  })
+    return (flat() ?? []).reduce((acc, option) => acc + 1 + (option?.details?.length ?? 0), headers)
+  }, 0)
 
   const dimensions = useTerminalDimensions()
   const limit = createMemo(() => Math.floor(dimensions().height / 2) - 6)
@@ -387,7 +388,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
 
   function moveSection(direction: 1 | -1) {
     if (props.locked) return
-    const sections = grouped().filter(([_, options]) => options.length > 0)
+    const sections = (grouped() ?? []).filter(([_, options]) => (options?.length ?? 0) > 0)
     if (sections.length === 0) return
     const current = sections.findIndex(([category]) => category === selected()?.category)
     const section = sections[(current + direction + sections.length) % sections.length]
@@ -410,7 +411,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     let remaining = store.selected
     let index = 0
     // Locate the row by position because a unique renderable ID cannot currently be ensured.
-    for (const [category, options] of grouped()) {
+    for (const [category, options] of grouped() ?? []) {
       if (category) index++
       if (remaining < options.length) {
         index += remaining
@@ -699,7 +700,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     >
       <DialogBleed>
         <Show
-          when={grouped().length > 0}
+          when={(grouped()?.length ?? 0) > 0}
           fallback={
             <Show
               when={props.renderFilter !== false && store.filter.length > 0}
@@ -734,7 +735,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             }}
             maxHeight={height()}
           >
-            <For each={grouped()}>
+            <For each={grouped() ?? []}>
               {([category, options], index) => (
                 <>
                   <Show when={category}>

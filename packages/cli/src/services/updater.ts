@@ -1,14 +1,13 @@
 import { Global } from "@opencode/util/global"
 import { AppProcess } from "@opencode/util/process"
-import { EffectFlock } from "@opencode/util/effect-flock"
-import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_LOCAL, OPENCODE_VERSION } from "../version"
-import { Context, Duration, Effect, FileSystem, Layer, Option, Ref, Schema } from "effect"
+import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_VERSION } from "../version"
+import { Context, Duration, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { ChildProcess } from "effect/process"
 import { parse, type ParseError } from "jsonc-parser"
 import path from "node:path"
 import { stripVTControlCharacters } from "node:util"
 import { RetainedImage } from "./retained-image"
-import { action, parseReleaseVersion, type Policy } from "./updater-action"
+import { parseReleaseVersion, type Policy } from "./updater-action"
 import { errorMessage } from "../util/error"
 
 export const methods = ["curl", "npm", "pnpm", "bun", "yarn", "vp", "brew", "winget"] as const
@@ -45,16 +44,7 @@ const decodeVpPackages = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Array(Schema.Struct({ name: Schema.String }))),
 )
 
-const installNames: Record<Method, string> = {
-  curl: "The OpenCode installer",
-  npm: "npm",
-  pnpm: "pnpm",
-  bun: "Bun",
-  yarn: "Yarn",
-  vp: "Vite+",
-  brew: "Homebrew",
-  winget: "WinGet",
-}
+
 
 const wingetPackage = "Anomaly.OpenCode"
 const wingetArgs = [
@@ -105,6 +95,8 @@ function resultDetail(result: { code: number; stdout: string; stderr: string }) 
   )
 }
 
+
+
 export interface Interface {
   readonly run: (onInstall?: (version: string) => void) => Effect.Effect<RunResult | undefined>
   readonly check: () => Effect.Effect<CheckResult | undefined, Error>
@@ -140,8 +132,7 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const global = yield* Global.Service
   const appProcess = yield* AppProcess.Service
-  const flock = yield* EffectFlock.Service
-  const installedVersion = yield* Ref.make(OPENCODE_VERSION)
+
   const channel = OPENCODE_CHANNEL.replace(/[^a-zA-Z0-9._-]/g, "-")
   const executable = yield* fs.realPath(process.execPath).pipe(Effect.orElseSucceed(() => process.execPath))
   const installedPackage = yield* Effect.gen(function* () {
@@ -161,15 +152,7 @@ const make = Effect.gen(function* () {
   // WinGet extracts portable packages into a directory named after the package identifier.
   const installedWinget = /[\\/]winget[\\/]packages[\\/]anomaly\.opencode_/i.test(executable)
 
-  const readPolicy = Effect.fnUntraced(function* () {
-    const values = yield* Effect.forEach(["config.json", "opencode.json", "opencode.jsonc"], (name) =>
-      fs.readFileString(path.join(global.config, name)).pipe(
-        Effect.map(decodePolicy),
-        Effect.orElseSucceed(() => undefined),
-      ),
-    )
-    return values.findLast((value) => value !== undefined) ?? "notify"
-  })
+
 
   const exec = Effect.fnUntraced(function* (command: string[], timeout: Duration.Input = "30 seconds") {
     return yield* appProcess
@@ -195,21 +178,7 @@ const make = Effect.gen(function* () {
   )
   const curlBinary = yield* fs.realPath(curlPath).pipe(Effect.orElseSucceed(() => curlPath))
 
-  // On Windows a bare `bash` may be the WSL launcher, which cannot run the installer against Windows paths.
-  const installerBash = Effect.fnUntraced(function* () {
-    if (process.platform !== "win32") return "bash"
-    if (process.env.OPENCODE_GIT_BASH_PATH) return process.env.OPENCODE_GIT_BASH_PATH
-    const git = yield* exec(["git", "--exec-path"]).pipe(Effect.orElseSucceed(() => undefined))
-    const bash = git?.code === 0 ? path.resolve(git.stdout.trim(), "..", "..", "..", "bin", "bash.exe") : undefined
-    if (bash && (yield* fs.exists(bash).pipe(Effect.orElseSucceed(() => false)))) return bash
-    return yield* Effect.fail(
-      new UpgradeError({
-        title: "Git Bash is required to update OpenCode",
-        detail: "The OpenCode installer runs with Git Bash on Windows, and it was not found.",
-        retry: "Install Git for Windows or set OPENCODE_GIT_BASH_PATH, then run opencode upgrade again.",
-      }),
-    )
-  })
+
 
   const method = Effect.fnUntraced(function* () {
     if (executable === curlBinary) return "curl"
@@ -365,17 +334,10 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const temporaryDirectory = (prefix: string) =>
-    Effect.acquireRelease(fs.makeTempDirectory({ directory: global.cache, prefix }), (directory) =>
-      fs.remove(directory, { recursive: true, force: true }).pipe(Effect.ignore),
-    )
 
-  // On Windows the installer must delete or replace the running binary, which only works
-  // while another link to it exists (see RetainedImage). Upgrades keep that link in the
-  // cache; uninstall has already removed the cache, so it uses the temporary directory.
+
   const retaining = <A, E, R>(method: Method, effect: Effect.Effect<A, E, R>, directory = global.cache) => {
     if (process.platform !== "win32" || method === "brew") return effect
-    // Only the installed binary is at stake; source checkouts run inside bun or node.
     const owned =
       method === "curl"
         ? executable === curlBinary
@@ -388,235 +350,23 @@ const make = Effect.gen(function* () {
     )
   }
 
-  const runUpgrade = (input: {
-    readonly method: Method
-    readonly command: string[]
-    readonly displayCommand?: string[]
-    readonly title?: string
-    readonly retry?: string
-  }) => {
-    const failure = (detail: string, cause?: unknown) =>
-      new UpgradeError(
-        {
-          title: input.title ?? `${installNames[input.method]} could not install OpenCode`,
-          detail,
-          command: (input.displayCommand ?? input.command).join(" "),
-          retry: input.retry ?? "Fix the issue above, then run opencode upgrade again.",
-        },
-        cause === undefined ? undefined : { cause },
-      )
-    return exec(input.command, "5 minutes").pipe(
-      Effect.flatMap((result) =>
-        result.code === 0 ? Effect.succeed(result) : Effect.fail(failure(resultDetail(result))),
-      ),
-      Effect.mapError((cause) =>
-        cause instanceof UpgradeError
-          ? cause
-          : failure(
-              cause instanceof AppProcess.AppProcessError && cause.stderr === undefined && cause.cause === undefined
-                ? `Failed to update with ${input.method}`
-                : errorDetail(cause),
-              cause,
-            ),
-      ),
-    )
-  }
-
-  const upgrade = Effect.fnUntraced(function* (method: Method, input: string) {
-    if (!parseReleaseVersion(input)) return yield* Effect.fail(new Error(`Invalid version: ${input}`))
-    const version = input.trim().replace(/^v/, "")
-    const packageName =
-      method === "winget"
-        ? wingetPackage
-        : method === "brew" && installedFormula === "opencode"
-          ? "opencode"
-          : (yield* release(method)).package
-    const target = `${packageName}@${version}`
-    if (installedPackage && packageName !== installedPackage && (method === "pnpm" || method === "yarn")) {
-      return yield* Effect.fail(new Error(`Reinstall ${target} with ${method} to migrate from ${installedPackage}.`))
-    }
-    const commands: Record<Exclude<Method, "bun" | "curl" | "brew" | "winget">, string[]> = {
-      // Keep the old package: uninstalling it can unlink the replacement command.
-      npm: [
-        "npm",
-        "install",
-        "--global",
-        ...((OPENCODE_ARTIFACT === "cli" && !installedPackage?.endsWith("/cli-node")) ||
-        (installedPackage && packageName !== installedPackage)
-          ? ["--force"]
-          : []),
-        target,
-      ],
-      pnpm: ["pnpm", "add", "--global", `--allow-build=${packageName}`, target],
-      yarn: ["yarn", "global", "add", target],
-      vp:
-        installedPackage && packageName !== installedPackage
-          ? ["vp", "install", "-g", "--force", target]
-          : ["vp", "update", "-g", target],
-    }
-    yield* Effect.scoped(
-      Effect.gen(function* () {
-        // Other OpenCode processes may be installing at the same time. Wait longer than the
-        // slowest install (curl runs two 5-minute commands).
-        yield* flock.acquire("cli-upgrade", undefined, { timeoutMs: Duration.toMillis("15 minutes") })
-        if (method === "bun") {
-          // Bun does not prune old versions from its shared package cache.
-          yield* fs.makeDirectory(global.cache, { recursive: true })
-          const cache = yield* temporaryDirectory("update-")
-          return yield* retaining(
-            method,
-            runUpgrade({
-              method,
-              command: ["bun", "install", "--global", "--trust", "--cache-dir", cache, target],
-              displayCommand: ["bun", "install", "--global", "--trust", target],
-            }),
-          )
-        }
-        if (method === "curl") {
-          const bash = yield* installerBash()
-          yield* fs.makeDirectory(global.cache, { recursive: true })
-          const directory = yield* temporaryDirectory("update-")
-          const installer = path.join(directory, "install")
-          yield* runUpgrade({
-            method,
-            command: ["curl", "-fsSL", "-o", installer, "https://opencode.ai/v2/install"],
-            displayCommand: ["curl", "-fsSL", "https://opencode.ai/v2/install"],
-            title: "Could not download the OpenCode installer",
-            retry: "Check your network, then run opencode upgrade again.",
-          })
-          return yield* retaining(
-            method,
-            runUpgrade({
-              method,
-              command: [bash, installer, "--version", version, "--no-modify-path"],
-              displayCommand: ["opencode", "upgrade", version, "--method", "curl"],
-              title: "The OpenCode installer failed",
-            }),
-          )
-        }
-        if (method === "brew") return yield* runUpgrade({ method, command: ["brew", "upgrade", packageName] })
-        if (method === "winget")
-          return yield* retaining(
-            method,
-            runUpgrade({
-              method,
-              command: [
-                "winget",
-                "upgrade",
-                ...wingetArgs,
-                "--version",
-                version,
-                "--silent",
-                "--accept-package-agreements",
-              ],
-            }),
-          )
-        return yield* retaining(method, runUpgrade({ method, command: commands[method] }))
-      }),
-    ).pipe(
-      Effect.mapError((cause) =>
-        cause instanceof UpgradeError
-          ? cause
-          : new UpgradeError(
-              {
-                title: "Could not prepare the OpenCode upgrade",
-                detail: errorDetail(cause),
-                retry: "Fix the issue above, then run opencode upgrade again.",
-              },
-              { cause },
-            ),
-      ),
-      Effect.asVoid,
-    )
+  const upgrade = Effect.fnUntraced(function* (_method: Method, _input: string) {
+    yield* Effect.logInfo("upgrade disabled in AntiTerm")
   })
 
-  const inspect = Effect.fnUntraced(function* () {
-    if (OPENCODE_LOCAL || ["1", "true"].includes(process.env.OPENCODE_DISABLE_AUTOUPDATE?.toLowerCase() ?? "")) {
-      yield* Effect.logInfo("update check skipped", {
-        reason: OPENCODE_LOCAL ? "local-install" : "disabled",
-        version: OPENCODE_VERSION,
-        channel: OPENCODE_CHANNEL,
-      })
-      return undefined
-    }
-    const policy = yield* readPolicy()
-    if (policy === "disable") {
-      yield* Effect.logInfo("update check skipped", { reason: "policy-disabled" })
-      return undefined
-    }
-
-    const current = yield* Ref.get(installedVersion)
-    const version = yield* latest()
-    yield* Effect.logInfo("update check", {
-      current,
-      latest: version,
-    })
-    const next = action(current, version, policy)
-    if (next === "none") {
-      yield* Effect.logInfo("update check done", { action: "up-to-date" })
-      return undefined
-    }
-    yield* Effect.logInfo("OpenCode update available", { current, latest: version, action: next })
-    return { policy, version }
-  })
-
-  const install = Effect.fnUntraced(function* (version: string) {
-    const detected = yield* method()
-    if (!detected) {
-      yield* Effect.logWarning("update skipped: installation method not found")
-      return false
-    }
-    const current = yield* Ref.get(installedVersion)
-    yield* upgrade(detected, version)
-    yield* Ref.set(installedVersion, version)
-    yield* Effect.logInfo("updated OpenCode", { from: current, to: version, method: detected })
-    return true
-  })
-
-  const apply = Effect.fn("cli.updater.apply")(function* (version: string) {
-    if (!(yield* install(version)))
-      return yield* Effect.fail(
-        new Error(
-          "Could not detect the installation method. Update with your package manager or download the latest release.",
-        ),
-      )
+  const apply = Effect.fn("cli.updater.apply")(function* (_version: string) {
+    yield* Effect.logInfo("apply update disabled in AntiTerm")
+    return undefined
   })
 
   const check = Effect.fn("cli.updater.check")(function* () {
-    if (OPENCODE_LOCAL)
-      return {
-        type: "unavailable" as const,
-        message: "This build runs from a source checkout. Use an installed OpenCode release to check for updates.",
-      }
-    const detected = yield* method()
-    if (!detected)
-      return {
-        type: "unavailable" as const,
-        message:
-          "Could not detect the installation method. Update with your package manager or download the latest release.",
-      }
-    const version = yield* latest(detected)
-    if (!parseReleaseVersion(version)) return yield* Effect.fail(new Error(`Invalid version: ${version}`))
-    const current = yield* Ref.get(installedVersion)
-    if (action(current, version, "auto") === "none") {
-      // An earlier check may have installed the update while this client is still running.
-      return action(OPENCODE_VERSION, current, "auto") === "none"
-        ? undefined
-        : { type: "installed" as const, version: current }
-    }
-    return { type: "available" as const, version }
+    return undefined
   })
 
   const run = Effect.fn("cli.updater.run")(
-    function* (onInstall: (version: string) => void = () => {}) {
-      const result = yield* inspect()
-      if (!result) return undefined
-      if (result.policy === "notify") return { type: "available" as const, version: result.version }
-      onInstall(result.version)
-      if (!(yield* install(result.version))) return yield* Effect.fail(new Error("Installation method not found"))
-      return { type: "installed" as const, version: result.version }
+    function* () {
+      return undefined
     },
-    Effect.catch((error) => Effect.logWarning("update check failed", { error }).pipe(Effect.as(undefined))),
   )
 
   return Service.of({ run, check, apply, method, latest, upgrade, removal })

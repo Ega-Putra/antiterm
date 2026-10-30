@@ -64,6 +64,7 @@ import { useEditorContext } from "../../context/editor"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
+import { DialogSystemPrompt } from "../../component/dialog-system-prompt"
 import { DialogImagePreview } from "../../component/dialog-image-preview"
 import { statusLabel } from "../../component/dialog-workspace-file-changes"
 import { DialogMessage } from "./dialog-message"
@@ -916,6 +917,15 @@ export function Session(props: {
             ? client.api.session.update({ sessionID: route.sessionID, title })
             : data.session.title.generate(route.sessionID)
         ).catch((error) => toast.error(error))
+      },
+    },
+    {
+      title: "System prompt",
+      id: "session.system_prompt",
+      group: "Session",
+      slash: { name: "system" },
+      run: () => {
+        DialogSystemPrompt.show(dialog, route.sessionID, session()?.metadata as Record<string, unknown> | undefined)
       },
     },
     {

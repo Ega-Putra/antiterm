@@ -31,6 +31,12 @@ export class LocalConfig extends Schema.Class<LocalConfig>("Mcp.LocalConfig")({
   }),
   environment: Schema.Record(Schema.String, Schema.String).pipe(optional),
   disabled: Schema.Boolean.pipe(optional),
+  startup: Schema.Boolean.pipe(optional).annotate({
+    description: "Automatically connect this MCP server on startup. Defaults to false in AntiTerm.",
+  }),
+  connect_on_startup: Schema.Boolean.pipe(optional).annotate({
+    description: "Automatically connect this MCP server on startup. Defaults to false in AntiTerm.",
+  }),
   codemode: Schema.Boolean.pipe(optional).annotate({
     description: "Expose this server's tools through Code Mode. Defaults to true.",
   }),
@@ -56,6 +62,12 @@ export class RemoteConfig extends Schema.Class<RemoteConfig>("Mcp.RemoteConfig")
   headers: Schema.Record(Schema.String, Schema.String).pipe(optional),
   oauth: Schema.Union([OAuthConfig, Schema.Literal(false)]).pipe(optional),
   disabled: Schema.Boolean.pipe(optional),
+  startup: Schema.Boolean.pipe(optional).annotate({
+    description: "Automatically connect this MCP server on startup. Defaults to false in AntiTerm.",
+  }),
+  connect_on_startup: Schema.Boolean.pipe(optional).annotate({
+    description: "Automatically connect this MCP server on startup. Defaults to false in AntiTerm.",
+  }),
   codemode: Schema.Boolean.pipe(optional).annotate({
     description: "Expose this server's tools through Code Mode. Defaults to true.",
   }),
@@ -94,6 +106,8 @@ export const Server = Schema.Struct({
   // Set for remote servers registered as OAuth integrations; lets clients act on the right integration
   // without matching by name, which could collide with provider or plugin integrations.
   integrationID: optional(IntegrationID),
+  startup: Schema.Boolean.pipe(optional),
+  disabled: Schema.Boolean.pipe(optional),
 }).annotate({ identifier: "Mcp.Server" })
 
 export interface Resource extends Schema.Schema.Type<typeof Resource> {}
